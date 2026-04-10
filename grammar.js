@@ -15,62 +15,154 @@ module.exports = grammar({
   ],
 
   rules: {
-    source_file: ($) => seq(
-      optional($.platforms_metadata),
-      repeat($.import_statement),
-      repeat($.function_definition),
-    ),
+    source_file: ($) => repeat($.top_level_declaration),
 
     comment: () => token(seq("//", /.*/)),
 
-    platforms_metadata: ($) => seq(
-      "#platforms",
-      "{",
-      repeat($.platform_group),
-      "}",
+    top_level_declaration: ($) => choice(
+      $.import_statement,
+      $.function_definition,
+      $.type_definition,
+      $.construct_definition,
+      $.widget_instance,
     ),
 
-    platform_group: ($) => seq(
-      field("name", $.identifier),
-      "=",
-      "[",
-      optional(seq(
-        $.identifier,
-        repeat(seq(",", $.identifier)),
-      )),
-      "]",
-      ";",
-    ),
-
+    // import foo.bar as Alias
     import_statement: ($) => seq(
       "import",
       $.path,
-      ";",
+      optional(seq("as", field("alias", $.identifier))),
     ),
 
-    function_definition: ($) => seq(
+    // construct Widget { annotations { ... } requires { ... } ... }
+    construct_definition: ($) => seq(
+      "construct",
+      field("name", $.identifier),
+      "{",
+      repeat($.construct_block),
+      "}",
+    ),
+
+    construct_block: ($) => seq(
+      field("kind", $.identifier),
+      "{",
+      repeat($.construct_block_item),
+      "}",
+    ),
+
+    construct_block_item: ($) => choice(
+      seq($.attribute, ";"),
+      seq($.identifier, $.parameter_list, $.block),
+      seq($.identifier, ";"),
+    ),
+
+    // Widget Foo(params) { ... }
+    widget_instance: ($) => seq(
       repeat($.attribute),
-      optional($.execution_mode),
-      "func",
+      field("widget", $.identifier),
       field("name", $.identifier),
       field("parameters", $.parameter_list),
-      optional(seq("->", field("return_type", $.type))),
-      field("body", $.block),
+      "{",
+      repeat($.widget_body_item),
+      "}",
     ),
 
-    execution_mode: () => choice("native", "runtime", "script", "auto"),
+    widget_body_item: ($) => choice(
+      seq($.attribute, $.let_statement),
+      seq($.attribute, ";"),
+      $.let_statement,
+      $.lifecycle_method,
+      $.named_block,
+    ),
 
+    named_block: ($) => seq(
+      field("name", $.identifier),
+      "{",
+      repeat($.statement),
+      "}",
+    ),
+
+    lifecycle_method: ($) => seq(
+      field("name", $.identifier),
+      $.parameter_list,
+      $.block,
+    ),
+
+    // type Foo { let x: Int ... }
+    type_definition: ($) => seq(
+      repeat($.attribute),
+      "type",
+      field("name", $.identifier),
+      "{",
+      repeat($.type_member),
+      "}",
+    ),
+
+    type_member: ($) => choice(
+      $.static_let_statement,
+      $.let_statement,
+      $.function_definition,
+    ),
+
+    static_let_statement: ($) => seq(
+      "static",
+      "let",
+      field("name", $.identifier),
+      optional(seq(":", field("type", $.type_expression))),
+      "=",
+      field("value", $.expression),
+    ),
+
+    // function foo(x: Int) -> Int { ... }
+    // function foo(x: Int): Int;   (FFI extern)
+    function_definition: ($) => seq(
+      repeat($.attribute),
+      "function",
+      field("name", $.identifier),
+      field("parameters", $.parameter_list),
+      optional(seq("->", field("return_type", $.type_expression))),
+      choice(
+        field("body", $.block),
+        ";",
+      ),
+    ),
+
+    // @Foo or @Foo.Bar or @Foo { key: val; }
     attribute: ($) => seq(
       "@",
-      field("name", $.attribute_identifier),
-      optional($.attribute_arguments),
+      field("name", $.attribute_path),
+      optional(choice(
+        $.attribute_arguments_block,
+        $.attribute_arguments_paren,
+      )),
     ),
 
-    attribute_arguments: ($) => seq(
+    attribute_path: ($) => seq(
+      $.attribute_identifier,
+      repeat(seq(".", $.attribute_identifier)),
+    ),
+
+    attribute_arguments_block: ($) => seq(
+      "{",
+      optional(seq(
+        $.attribute_argument,
+        repeat(seq(";", $.attribute_argument)),
+        optional(";"),
+      )),
+      "}",
+    ),
+
+    attribute_argument: ($) => seq(
+      field("key", $.identifier),
+      ":",
+      field("value", $.expression),
+    ),
+
+    attribute_arguments_paren: ($) => seq(
       "(",
       optional(seq(
-        $.identifier,
-        repeat(seq(",", $.identifier)),
+        $.attribute_argument,
+        repeat(seq(",", $.attribute_argument)),
       )),
       ")",
     ),
@@ -84,18 +176,25 @@ module.exports = grammar({
       ")",
     ),
 
+    // label: name: Type  OR  name: Type
     parameter: ($) => seq(
       field("name", $.identifier),
       ":",
-      field("type", $.type),
+      field("type", $.type_expression),
     ),
 
-    type: ($) => choice(
+    type_expression: ($) => choice(
       $.builtin_type,
-      $.identifier,
+      $.path,
+      seq("[", $.type_expression, "]"),
     ),
 
-    builtin_type: () => choice("int", "float", "bool", "string"),
+    builtin_type: () => choice(
+      "Int", "Float", "Bool", "String",
+      "Void", "RawPtr", "CString",
+      "I8", "I16", "I32", "I64",
+      "U8", "U16", "U32", "U64",
+    ),
 
     block: ($) => seq(
       "{",
@@ -105,7 +204,10 @@ module.exports = grammar({
 
     statement: ($) => choice(
       $.if_statement,
+      $.for_statement,
+      $.switch_statement,
       $.let_statement,
+      $.assign_statement,
       $.return_statement,
       $.expression_statement,
     ),
@@ -114,59 +216,92 @@ module.exports = grammar({
       "if",
       field("condition", $.expression),
       field("consequence", $.block),
-      optional(seq("else", field("alternative", $.block))),
+      optional(seq("else", field("alternative", choice($.block, $.if_statement)))),
     ),
 
+    for_statement: ($) => seq(
+      "for",
+      field("variable", $.identifier),
+      "in",
+      field("iterable", $.expression),
+      field("body", $.block),
+    ),
+
+    switch_statement: ($) => seq(
+      "switch",
+      field("value", $.expression),
+      "{",
+      repeat($.switch_case),
+      optional($.switch_default),
+      "}",
+    ),
+
+    switch_case: ($) => seq(
+      "case",
+      field("value", $.expression),
+      field("body", $.block),
+    ),
+
+    switch_default: ($) => seq(
+      "default",
+      field("body", $.block),
+    ),
+
+    // let x: Int = 5  or  let x: Int  (no init, e.g. struct fields)
     let_statement: ($) => seq(
       "let",
       field("name", $.identifier),
-      optional(seq(":", field("type", $.type))),
+      optional(seq(":", field("type", $.type_expression))),
+      optional(seq("=", field("value", $.expression))),
+      optional(";"),
+    ),
+
+    assign_statement: ($) => prec(1, seq(
+      field("target", $.path),
       "=",
       field("value", $.expression),
-      ";",
-    ),
+      optional(";"),
+    )),
 
     return_statement: ($) => seq(
       "return",
-      field("value", $.expression),
-      ";",
+      optional(field("value", $.expression)),
+      optional(";"),
     ),
 
     expression_statement: ($) => seq(
       $.expression,
-      ";",
+      optional(";"),
     ),
 
     expression: ($) => choice(
       $.binary_expression,
       $.unary_expression,
       $.call_expression,
-      $.cast_expression,
       $.path,
       $.literal,
+      $.array_literal,
       seq("(", $.expression, ")"),
     ),
 
     call_expression: ($) => prec(PREC.CALL, seq(
-      field("function", choice($.path, seq("(", $.expression, ")"))),
+      field("function", $.path),
       field("arguments", $.argument_list),
     )),
 
     argument_list: ($) => seq(
       "(",
       optional(seq(
-        $.expression,
-        repeat(seq(",", $.expression)),
+        $.argument,
+        repeat(seq(",", $.argument)),
       )),
       ")",
     ),
 
-    cast_expression: ($) => prec(PREC.CALL, seq(
-      field("target", $.builtin_type),
-      "(",
+    argument: ($) => seq(
+      optional(seq(field("label", $.identifier), ":")),
       field("value", $.expression),
-      ")",
-    )),
+    ),
 
     unary_expression: ($) => prec.right(PREC.UNARY, seq(
       field("operator", "-"),
@@ -184,6 +319,8 @@ module.exports = grammar({
         ["!=", PREC.COMPARISON],
         ["<=", PREC.COMPARISON],
         [">=", PREC.COMPARISON],
+        ["<", PREC.COMPARISON],
+        [">", PREC.COMPARISON],
       ].map(([operator, precedence]) =>
         prec.left(precedence, seq(
           field("left", $.expression),
@@ -193,10 +330,19 @@ module.exports = grammar({
       ),
     ),
 
-    path: ($) => seq(
+    array_literal: ($) => seq(
+      "[",
+      optional(seq(
+        $.expression,
+        repeat(seq(",", $.expression)),
+      )),
+      "]",
+    ),
+
+    path: ($) => prec.left(seq(
       $.identifier,
       repeat(seq(".", $.member_identifier)),
-    ),
+    )),
 
     literal: ($) => choice(
       $.true,
