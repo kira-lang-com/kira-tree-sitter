@@ -14,6 +14,12 @@ module.exports = grammar({
     $.comment,
   ],
 
+  conflicts: ($) => [
+    [$.return_statement],
+    [$.let_statement],
+    [$.assign_statement, $.expression_statement],
+  ],
+
   rules: {
     source_file: ($) => repeat($.top_level_declaration),
 
