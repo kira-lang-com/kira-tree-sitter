@@ -191,7 +191,7 @@ module.exports = grammar({
 
     type_expression: ($) => choice(
       $.builtin_type,
-      $.path,
+      $.type_identifier,
       seq("[", $.type_expression, "]"),
     ),
 
@@ -381,5 +381,11 @@ module.exports = grammar({
     identifier: () => token(prec(-1, /[a-zA-Z_][a-zA-Z0-9_]*/)),
     member_identifier: () => token(prec(-1, /[a-zA-Z_][a-zA-Z0-9_]*/)),
     attribute_identifier: () => token(/[A-Z][a-zA-Z0-9_]*/),
+
+    // Used exclusively in type positions - distinct node for clean highlighting
+    type_identifier: ($) => seq(
+      token(prec(-1, /[a-zA-Z_][a-zA-Z0-9_]*/)),
+      repeat(seq(".", token(prec(-1, /[a-zA-Z_][a-zA-Z0-9_]*/))),
+    )),
   },
 });

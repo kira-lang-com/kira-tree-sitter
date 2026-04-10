@@ -1056,15 +1056,20 @@
           "named": true
         },
         {
-          "type": "path",
+          "type": "type_expression",
           "named": true
         },
         {
-          "type": "type_expression",
+          "type": "type_identifier",
           "named": true
         }
       ]
     }
+  },
+  {
+    "type": "type_identifier",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "type_member",
