@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Tree-sitter grammar for Kira",
   "main": "grammar.js",
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
   "types": "bindings/node",
   "tree-sitter": [
     {
@@ -11,7 +15,7 @@
     }
   ],
   "devDependencies": {
-    "tree-sitter-cli": "^0.24.7"
+    "tree-sitter-cli": "^0.26.11"
   },
   "keywords": [
     "tree-sitter",

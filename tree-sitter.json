@@ -5,7 +5,9 @@
       "camelcase": "Kira",
       "scope": "source.kira",
       "path": ".",
-      "file-types": null,
+      "file-types": [
+        "kira"
+      ],
       "injection-regex": "^kira$"
     }
   ],
@@ -14,7 +16,7 @@
     "license": "MIT",
     "description": "Tree-sitter grammar for Kira",
     "links": {
-      "repository": "https://github.com/kira-lang-com/kira"
+      "repository": "https://github.com/kira-lang-com/kira-tree-sitter"
     }
   },
   "bindings": {
